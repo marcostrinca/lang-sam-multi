@@ -12,12 +12,18 @@ def load_image(image_path: str):
     return Image.open(image_path).convert("RGB")
 
 
-def draw_image(image, masks, boxes, labels, alpha=0.4):
+def draw_image(image, masks, boxes, labels, alpha=1.0):
+    # print(masks)
+    # print(masks.shape)
+    masks2 = np.invert(masks) > 0
+    # print(masks2)
+    # print(masks2.shape)
     image = torch.from_numpy(image).permute(2, 0, 1)
-    if len(boxes) > 0:
-        image = draw_bounding_boxes(image, boxes, colors=['red'] * len(boxes), labels=labels, width=2)
+    # if len(boxes) > 0:
+        # image = draw_bounding_boxes(image, boxes, colors=['red'] * len(boxes), labels=labels, width=2)
     if len(masks) > 0:
-        image = draw_segmentation_masks(image, masks=masks, colors=['cyan'] * len(masks), alpha=alpha)
+        image = draw_segmentation_masks(image, masks=masks, colors=['white'] * len(masks), alpha=alpha)
+        image = draw_segmentation_masks(image, masks=masks2, colors=['black'] * len(masks2), alpha=alpha)
     return image.numpy().transpose(1, 2, 0)
 
 
