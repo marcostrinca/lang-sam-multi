@@ -1,6 +1,7 @@
 
 import os
 import warnings
+import shutil
 
 import gradio as gr
 import numpy as np
@@ -16,33 +17,61 @@ ready = False
 g_sam_type = "vit_h"
 text_prompt = "foreground"
 model = LangSAM()
-
-gr_inputs = [
-        gr.Dropdown(choices=list(SAM_MODELS.keys()), label="SAM model", value="vit_h"),
-        gr.Slider(0, 1, value=0.3, label="Box threshold"),
-        gr.Slider(0, 1, value=0.25, label="Text threshold"),
-        gr.Image(type="filepath", label='Image'),
-        #gr.inputs.File(file_count="multiple", label="Image list"),
-        gr.Textbox(lines=1, label="Text Prompt"),
-    ]
+masksOut = []
+imgNames = []
     
 def predict(sam_type, box_threshold, text_threshold, image_path, text_prompt):
     print("Predicting... ", sam_type, box_threshold, text_threshold, image_path, text_prompt)
+    masksOut = []
+    imgNames = []
 
-    image_pil = load_image(image_path)
+    for i in image_path:
+        im = load_image(i.name)
+        masks, boxes, phrases, logits = model.predict(im, text_prompt, box_threshold, text_threshold)
+        labels = [f"{phrase} {logit:.2f}" for phrase, logit in zip(phrases, logits)]
+        image_array = np.asarray(im)
+        image = draw_image(image_array, masks, boxes, labels)
+        image = Image.fromarray(np.uint8(image)).convert("RGB")
+        masksOut.append(image)
+        imgNames.append(i.name)
 
-    #image_pil2 = load_image(image_list[0])
-    #print(image_list[0].name)
+    return masksOut, imgNames
 
-    masks, boxes, phrases, logits = model.predict(image_pil, text_prompt, box_threshold, text_threshold)
-    labels = [f"{phrase} {logit:.2f}" for phrase, logit in zip(phrases, logits)]
-    image_array = np.asarray(image_pil)
-    image = draw_image(image_array, masks, boxes, labels)
-    image = Image.fromarray(np.uint8(image)).convert("RGB")
-    return image
+def saveMasks(masks, names):
+    list_1 = names.split(",")
+        # print ("extenxtion: ", imgName.rsplit('.', maxsplit=1)[1])
 
-gr_outputs = [gr.outputs.Image(type="pil", label="Output Image")]
+    for i in range(len(masks)):
+        list_2 = list_1[i].split("/")
+        imgFullName = list_2[len(list_2)-1]
+        imgName = imgFullName.rsplit('.', maxsplit=1)[0]
+        target=f"./flagged/{imgName}.png"
 
-gr.Interface(fn=predict,
-             inputs=gr_inputs,
-             outputs=gr_outputs).launch(server_name="0.0.0.0")
+        print(masks[i]['name'])
+        print(target)
+
+        shutil.copy(masks[i]['name'], target)
+
+with gr.Blocks() as demo:
+    with gr.Row(): 
+        with gr.Column():
+            dropdown = gr.Dropdown(choices=list(SAM_MODELS.keys()), label="SAM model", value="vit_h")
+            slider1 = gr.Slider(0, 1, value=0.35, label="Box threshold")
+            slider2 = gr.Slider(0, 1, value=0.25, label="Text threshold")
+            # imageIn = gr.Image(type="filepath", label='Image')
+            images = gr.inputs.File(file_count="multiple", label="Lista")
+            textPrompt = gr.Textbox(lines=1, label="O que você quer recortar?")
+            send_button = gr.Button("Gerar máscaras")
+        
+        with gr.Column():
+            gallery = gr.Gallery(label="Máscaras geradas", show_label=False, elem_id="gallery").style(columns=[3], object_fit="contain", height="auto")
+            fileNames = gr.Textbox()
+
+            save = gr.Button("Salvar máscaras")
+
+    send_button.click(predict, inputs=[dropdown, slider1, slider2, images, textPrompt], outputs=[gallery, fileNames])
+    save.click(saveMasks, inputs=[gallery, fileNames])
+
+
+if __name__ == "__main__":
+    demo.launch(allow_flagging="manual") 
